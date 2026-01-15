@@ -53,7 +53,6 @@ bool vld(const string& strk){
 
     }
 
-    // проверка на допустимые символы
     if (!regex_match(str, pattern)) {
         cout << "Invalid format. Use only letters, digits, hyphen, and space." << endl;
         return true;
