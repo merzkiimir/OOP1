@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>802</width>
-    <height>590</height>
+    <width>910</width>
+    <height>591</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -31,7 +31,7 @@
      <rect>
       <x>0</x>
       <y>0</y>
-      <width>802</width>
+      <width>911</width>
       <height>534</height>
      </rect>
     </property>
@@ -74,6 +74,20 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="btnLoadDb">
+         <property name="text">
+          <string>loadfromdb</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnSaveDb">
+         <property name="text">
+          <string>savetodb</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QPushButton" name="btnsearch">
          <property name="text">
           <string>search</string>
@@ -107,7 +121,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>802</width>
+     <width>910</width>
      <height>22</height>
     </rect>
    </property>

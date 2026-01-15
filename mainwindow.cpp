@@ -7,6 +7,10 @@
 #include <QTableWidgetItem>
 #include <QInputDialog>
 
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QSqlError>
+
 
 #include "src/contactdialog.h"
 #include "src/searchdialog.h"
@@ -121,6 +125,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(header, &QHeaderView::sectionClicked,
             this, &MainWindow::onHeaderSectionClicked);
+
+
+
+
 }
 
 MainWindow::~MainWindow()
@@ -131,10 +139,6 @@ MainWindow::~MainWindow()
 void MainWindow::updatetable()
 {
 
-    if (!ui || !ui->tableContacts) {
-        qWarning() << "updatetable: tableContacts is null";
-        return;
-    }
 
     QTableWidget *table = ui->tableContacts;
 
@@ -268,7 +272,6 @@ void MainWindow::on_btnsearch_clicked()
         return;
     }
 
-    // find_cntct_gui уже умеет работать с несколькими полями через map<field,value>
     searchResult = find_cntct_gui(contacts, query);
     searchActive = true;
     updatetable();
@@ -339,4 +342,208 @@ void MainWindow::onHeaderSectionClicked(int logicalIndex)
 
 
     updatetable();
+}
+
+
+bool MainWindow::initDb()
+{
+    m_db = QSqlDatabase::addDatabase("QPSQL");
+    m_db.setHostName("127.0.0.1");
+    m_db.setPort(5432);
+    m_db.setDatabaseName("phonebook");
+    m_db.setUserName("postgres");
+    m_db.setPassword("...");
+
+
+    QSqlQuery q(m_db);
+
+    if (!q.exec(
+            "CREATE TABLE IF NOT EXISTS contacts ("
+            "  id SERIAL PRIMARY KEY,"
+            "  name       TEXT NOT NULL,"
+            "  surname    TEXT NOT NULL,"
+            "  patronymic TEXT,"
+            "  address    TEXT,"
+            "  birth_date TEXT NOT NULL,"
+            "  email      TEXT NOT NULL"
+            ");"
+            )) {
+        qWarning() << "Create contacts failed:" << q.lastError().text();
+        return false;
+    }
+
+    if (!q.exec(
+            "CREATE TABLE IF NOT EXISTS phones ("
+            "  id SERIAL PRIMARY KEY,"
+            "  contact_id INTEGER NOT NULL "
+            "      REFERENCES contacts(id) ON DELETE CASCADE,"
+            "  phone_type   TEXT,"
+            "  phone_number TEXT NOT NULL"
+            ");"
+            )) {
+        qWarning() << "Create phones failed:" << q.lastError().text();
+        return false;
+    }
+
+    return true;
+}
+
+
+
+void MainWindow::on_btnSaveDb_clicked()
+{
+    if (!m_db.isOpen()) {
+        QMessageBox::warning(this, tr("База данных"),
+                             tr("Соединение с БД не установлено."));
+        return;
+    }
+
+    const auto &all = contacts.get_all();
+    if (all.empty()) {
+        QMessageBox::information(this, tr("База данных"),
+                                 tr("Нет данных для сохранения."));
+        return;
+    }
+
+    if (!m_db.transaction()) {
+        QMessageBox::warning(this, tr("База данных"),
+                             m_db.lastError().text());
+        return;
+    }
+
+    QSqlQuery q(m_db);
+
+    if (!q.exec("TRUNCATE TABLE phones RESTART IDENTITY CASCADE")) {
+        m_db.rollback();
+        QMessageBox::warning(this, tr("База данных"),
+                             q.lastError().text());
+        return;
+    }
+    if (!q.exec("TRUNCATE TABLE contacts RESTART IDENTITY CASCADE")) {
+        m_db.rollback();
+        QMessageBox::warning(this, tr("База данных"),
+                             q.lastError().text());
+        return;
+    }
+
+    for (const Contact &c : all) {
+        QSqlQuery qc(m_db);
+        qc.prepare(
+            "INSERT INTO contacts("
+            "  name, surname, patronymic, address, birth_date, email"
+            ") VALUES (:name, :surname, :patronymic, :address, :birth, :email)"
+            " RETURNING id"
+            );
+
+        qc.bindValue(":name",       QString::fromStdString(c.get_name()));
+        qc.bindValue(":surname",    QString::fromStdString(c.get_surname()));
+        qc.bindValue(":patronymic", QString::fromStdString(c.get_name3()));
+        qc.bindValue(":address",    QString::fromStdString(c.get_address()));
+        qc.bindValue(":birth",      QString::fromStdString(c.get_date()));
+        qc.bindValue(":email",      QString::fromStdString(c.get_email()));
+
+        if (!qc.exec() || !qc.next()) {
+            m_db.rollback();
+            QMessageBox::warning(this, tr("База данных"),
+                                 tr("Ошибка вставки контакта: %1")
+                                     .arg(qc.lastError().text()));
+            return;
+        }
+
+        int contactId = qc.value(0).toInt();
+
+        QSqlQuery qp(m_db);
+        qp.prepare(
+            "INSERT INTO phones(contact_id, phone_type, phone_number) "
+            "VALUES(:cid, :type, :num)"
+            );
+
+        const auto &phones = c.get_qt_phones();
+        for (const auto &p : phones) {
+            qp.bindValue(":cid",  contactId);
+            qp.bindValue(":type", QString::fromStdString(p.second)); // тип
+            qp.bindValue(":num",  QString::fromStdString(p.first));  // номер
+
+            if (!qp.exec()) {
+                m_db.rollback();
+                QMessageBox::warning(this, tr("База данных"),
+                                     tr("Ошибка вставки телефона: %1")
+                                         .arg(qp.lastError().text()));
+                return;
+            }
+        }
+    }
+
+    m_db.commit();
+    QMessageBox::information(this, tr("База данных"),
+                             tr("Данные сохранены в PostgreSQL."));
+}
+
+
+
+
+void MainWindow::on_btnLoadDb_clicked()
+{
+    if (!m_db.isOpen()) {
+        QMessageBox::warning(this, tr("База данных"),
+                             tr("Соединение с БД не установлено."));
+        return;
+    }
+
+    contacts = vectorContact();
+    searchActive = false;
+    searchResult = vectorContact();
+
+    QSqlQuery qc(m_db);
+    if (!qc.exec(
+            "SELECT id, name, surname, patronymic, address, birth_date, email "
+            "FROM contacts ORDER BY id"
+            )) {
+        QMessageBox::warning(this, tr("База данных"),
+                             tr("Ошибка чтения контактов: %1")
+                                 .arg(qc.lastError().text()));
+        return;
+    }
+
+    while (qc.next()) {
+        int id = qc.value("id").toInt();
+        std::string name       = qc.value("name").toString().toStdString();
+        std::string surname    = qc.value("surname").toString().toStdString();
+        std::string patronymic = qc.value("patronymic").toString().toStdString();
+        std::string address    = qc.value("address").toString().toStdString();
+        std::string birth      = qc.value("birth_date").toString().toStdString();
+        std::string email      = qc.value("email").toString().toStdString();
+
+        vectorNumbers nums;
+        std::vector<std::pair<std::string, std::string>> qtPhones;
+
+        QSqlQuery qp(m_db);
+        qp.prepare(
+            "SELECT phone_number, phone_type "
+            "FROM phones WHERE contact_id = :cid"
+            );
+        qp.bindValue(":cid", id);
+
+        if (!qp.exec()) {
+            QMessageBox::warning(this, tr("База данных"),
+                                 tr("Ошибка чтения телефонов: %1")
+                                     .arg(qp.lastError().text()));
+            return;
+        }
+
+        while (qp.next()) {
+            std::string num  = qp.value("phone_number").toString().toStdString();
+            std::string type = qp.value("phone_type").toString().toStdString();
+            nums.add_number(Number(num, type));
+            qtPhones.emplace_back(num, type);
+        }
+
+        Contact c(name, surname, patronymic, address, birth, email, nums);
+        c.set_qt_phones(qtPhones);
+        contacts.add_contact(c);
+    }
+
+    updatetable();
+    QMessageBox::information(this, tr("База данных"),
+                             tr("Данные загружены из PostgreSQL."));
 }

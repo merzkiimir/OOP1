@@ -1,7 +1,6 @@
 #include "vectnmb.h"
 #include "iomanip"
 #include "iostream"
-#include <sstream>
 using namespace std;
 
 vectorNumbers::~vectorNumbers(){}
@@ -22,7 +21,7 @@ void vectorNumbers::remove_number(){
     }
 }
 
-const std::vector<Number>& vectorNumbers::get_all() const{
+const vector<Number>& vectorNumbers::get_all() const{
     return numbers;
 }
 

@@ -2,6 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QSqlDatabase>
+
 #include "src/vctcontact.h"
 
 QT_BEGIN_NAMESPACE
@@ -27,6 +29,8 @@ private slots:
     void on_btnsearch_clicked();
     void on_btnreset_clicked();
     void onHeaderSectionClicked(int logicalIndex);
+    void on_btnSaveDb_clicked();    // НОВЫЙ слот: сохранить в БД
+    void on_btnLoadDb_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -34,9 +38,12 @@ private:
     vectorContact searchResult;
     bool searchActive = false;
 
+    QSqlDatabase m_db;
+
     int  m_lastSortColumn = -1;
     bool m_sortAscending  = true;
 
     void updatetable();
+    bool initDb();
 };
 #endif // MAINWINDOW_H
