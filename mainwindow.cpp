@@ -268,7 +268,6 @@ void MainWindow::on_btnsearch_clicked()
         return;
     }
 
-    // find_cntct_gui уже умеет работать с несколькими полями через map<field,value>
     searchResult = find_cntct_gui(contacts, query);
     searchActive = true;
     updatetable();
